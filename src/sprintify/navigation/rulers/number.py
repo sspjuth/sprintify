@@ -1,4 +1,4 @@
-from rulers.base_ruler import BaseRuler
+from .base import BaseRuler
 
 
 class NumberRuler(BaseRuler):

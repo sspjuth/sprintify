@@ -9,13 +9,13 @@ class TestNumberRuler(unittest.TestCase):
         self.assertEqual(self.ruler.transform(50, 100), 50)
         self.assertEqual(self.ruler.transform(20, 100), 0)
         self.assertEqual(self.ruler.transform(80, 100), 100)
-        self.assertEqual(self.ruler.reverse_transform(self.ruler.transform(50, 100), 100), 50)
+        self.assertEqual(self.ruler.get_value_at(self.ruler.transform(50, 100), 100), 50)
 
     def test_reverse_transform(self):
-        self.assertEqual(self.ruler.reverse_transform(50, 100), 50)
-        self.assertEqual(self.ruler.reverse_transform(0, 100), 20)
-        self.assertEqual(self.ruler.reverse_transform(100, 100), 80)
-        self.assertEqual(self.ruler.transform(self.ruler.reverse_transform(50, 100), 100), 50)
+        self.assertEqual(self.ruler.get_value_at(50, 100), 50)
+        self.assertEqual(self.ruler.get_value_at(0, 100), 20)
+        self.assertEqual(self.ruler.get_value_at(100, 100), 80)
+        self.assertEqual(self.ruler.transform(self.ruler.get_value_at(50, 100), 100), 50)
 
     def test_zoom_in(self):
         old_visible_length = self.ruler.visible_length

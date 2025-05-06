@@ -1,21 +1,21 @@
 import unittest
-from rulers.timeline_ruler import TimelineRuler
+from sprintify.navigation.rulers.timeline import TimelineRuler
 
 class TestTimelineRuler(unittest.TestCase):
     def setUp(self):
         self.ruler = TimelineRuler(0, 100, 20, 80)
 
     def test_transform(self):
-        self.assertEqual(self.ruler.transform(50, 100), 50)
-        self.assertEqual(self.ruler.transform(20, 100), 0)
-        self.assertEqual(self.ruler.transform(80, 100), 100)
-        self.assertEqual(self.ruler.reverse_transform(self.ruler.transform(50, 100), 100), 50)
+        self.assertEqual(60, self.ruler.transform(50, 100))
+        self.assertEqual(20, self.ruler.transform(20, 100))
+        self.assertEqual(100, self.ruler.transform(80, 100))
+        self.assertEqual(self.ruler.get_value_at(self.ruler.transform(50, 100), 100), 56)
 
     def test_reverse_transform(self):
-        self.assertEqual(self.ruler.reverse_transform(50, 100), 50)
-        self.assertEqual(self.ruler.reverse_transform(0, 100), 20)
-        self.assertEqual(self.ruler.reverse_transform(100, 100), 80)
-        self.assertEqual(self.ruler.transform(self.ruler.reverse_transform(50, 100), 100), 50)
+        self.assertEqual(self.ruler.get_value_at(50, 100), 50)
+        self.assertEqual(self.ruler.get_value_at(0, 100), 20)
+        self.assertEqual(self.ruler.get_value_at(100, 100), 80)
+        self.assertEqual(self.ruler.transform(self.ruler.get_value_at(50, 100), 100), 60)
 
     def test_zoom_in(self):
         old_visible_length = self.ruler.visible_length

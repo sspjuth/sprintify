@@ -2,18 +2,17 @@ from setuptools import setup, find_packages
 
 setup(
     name='sprintify-navigation',
-    version='0.1.0',
+    version='1.0.2',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     install_requires=[
-        'PyQt6==6.2.0',  # Specify the required version
+        'PyQt6==6.7.1',  # Specify the required version
         'numpy',
-        'matplotlib',
     ],
-    author='Your Name',
-    author_email='your.email@example.com',
-    description='A library for navigation components',
-    url='https://github.com/yourusername/navigation',
+    author='Sami Spjuth',
+    author_email='sami@spjuth.org',
+    description='A navigation widget  based on PyQt6',
+    url='https://github.com/sspjuth/navigation',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',

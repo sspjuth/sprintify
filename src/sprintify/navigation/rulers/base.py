@@ -1,5 +1,7 @@
 class BaseRuler:
     def __init__(self, window_start, window_stop, visible_start=None, visible_stop=None, reverse=False):
+        self.offset_start = 20
+        self.offset_end = 0
         self.window_start = window_start
         self.window_stop = window_stop
         self.visible_start = visible_start if visible_start else window_start
@@ -9,19 +11,24 @@ class BaseRuler:
         self.reverse = reverse
 
     def transform(self, value, widget_length):
+        width = widget_length - self.offset_start - self.offset_end
         if self.reverse:
-            return (self.visible_stop - value) * widget_length / self.visible_length
+            return self.offset_start + ((self.visible_stop - value)  / self.visible_length) * width
         else:
-            return (value - self.visible_start) * widget_length / self.visible_length
+            return self.offset_start + ((value - self.visible_start) / self.visible_length) * width
 
-    def reverse_transform(self, x, widget_length):
+    def get_value_at(self, x, widget_length):
         if self.reverse:
-            return self.visible_start + ((widget_length - x) / widget_length) * self.visible_length
+            return self.visible_start +  self.visible_length * ((widget_length - x) / widget_length)
         else:
-            return self.visible_start + (x / widget_length) * self.visible_length
+            return self.visible_start + self.visible_length * (x / widget_length)
+
+    def get_delta_width(self, delta, widget_width):
+        width = widget_width - self.offset_start - self.offset_end
+        return self.visible_length * (delta / width)
 
     def zoom(self, zoom_in, mouse_pos, widget_length):
-        value_at_mouse = self.reverse_transform(mouse_pos, widget_length)
+        value_at_mouse = self.get_value_at(mouse_pos, widget_length)
         zoom_factor = 1.1 if zoom_in else 0.9
 
         new_visible_length = min(self.window_length, (self.visible_stop - self.visible_start) * zoom_factor)
