@@ -143,7 +143,7 @@ class NavigationWidget(QWidget):
         else:
             # Scroll
             self.top_ruler.pan(event.angleDelta().x(), self.width())
-            self.left_ruler.pan(event.angleDelta().y(), self.height())
+            self.left_ruler.pan(-event.angleDelta().y(), self.height())
             self.update()
 
     def mousePressEvent(self, event):

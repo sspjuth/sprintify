@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 import random
 
 from PySide6.QtGui import QBrush, QPen
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow
 
 from sprintify.navigation.colors.modes import ColorMap
@@ -16,9 +15,9 @@ class NavigationWindow(QMainWindow):
         self.lines = None
         self.setWindowTitle("Navigation App")
         self.setMinimumSize(800, 420)
-        self.top_ruler = TimelineRuler(datetime(2023, 4, 1), datetime(2024, 5, 1))
+        self.top_ruler = TimelineRuler(datetime(2022, 4, 1), datetime(2024, 5, 1))
         self.left_ruler = NumberRuler(0, 50000, reverse=True)
-        self.color_map = ColorMap()
+        self.color_map = ColorMap(darkmode=True)
 
         self.ruler_widget = NavigationWidget(self.top_ruler, self.left_ruler, self.color_map, parent=self)
         self.setCentralWidget(self.ruler_widget)
