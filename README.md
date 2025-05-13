@@ -1,20 +1,20 @@
 # Sprintify Navigation
 
-A navigation widget based on PyQt6. So draw graphs and other timebased data and let your user navigate your data with keyboard or mouse.
+A navigation widget based on PySide6. So draw graphs and other timebased data and let your user navigate your data with keyboard or mouse.
 
 ## Installation
 
 To install the package, run:
 
 ```sh
-pip install .
+pip install sprintify-navigation
 ```
 
 ## Usage
 
 ```python
 from sprintify.navigation import NavigationWidget, ColorMap, TimelineRuler, NumberRuler
-from PyQt6.QtWidgets import QMainWindow, QApplication
+from PySide6.QtWidgets import QMainWindow, QApplication
 from datetime import datetime
 import sys
 
