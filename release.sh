@@ -37,7 +37,7 @@ git push origin main --tags || error "Failed to push tags."
 
 # Build and upload with version env variable
 export RELEASE_VERSION="$new_tag"
-python3 -m build navigation/ || error "Build failed."
-twine upload navigation/dist/* || error "Twine upload failed."
+python3 -m build  || error "Build failed."
+twine upload dist/* || error "Twine upload failed."
 
 echo "Release $new_tag complete."
