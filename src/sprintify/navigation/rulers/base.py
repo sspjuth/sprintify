@@ -29,17 +29,16 @@ class BaseRuler:
 
     def zoom(self, zoom_in, mouse_pos, widget_length):
         value_at_mouse = self.get_value_at(mouse_pos, widget_length)
-        zoom_factor = 1.1 if zoom_in else 0.9
+        zoom_factor = 1.2 if zoom_in else 0.9
 
         new_visible_length = min(self.window_length, (self.visible_stop - self.visible_start) * zoom_factor)
         if new_visible_length >= self.window_length:
             self.visible_start = self.window_start
             self.visible_stop = self.window_stop
-            self.visible_length = self.window_length
         else:
             self.visible_start = max(self.window_start, value_at_mouse - (value_at_mouse - self.visible_start) * zoom_factor)
             self.visible_stop = min(self.window_stop, self.visible_start + new_visible_length)
-            self.visible_length = self.visible_stop - self.visible_start
+        self.visible_length = self.visible_stop - self.visible_start
 
     def pan(self, delta, width):
         value_delta = delta / width * (self.visible_stop - self.visible_start)

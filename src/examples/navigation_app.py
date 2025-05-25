@@ -26,16 +26,16 @@ class NavigationWindow(QMainWindow):
 
     def draw_random_shapes(self):
         green = self.color_map.get_saturated_color("green", "border")
-        blue = self.color_map.get_saturated_color("blue", "fill")
-        self.ruler_widget.draw_rects(self.get_random_rects, brush=QBrush(blue))
-        self.ruler_widget.draw_lines(self.get_random_lines, pen=QPen(green, 1))
+        blue = self.color_map.get_saturated_color("grey", "fill")
+        self.ruler_widget.draw_rects("random_rects", self.get_random_rects, brush=QBrush(blue))
+        self.ruler_widget.draw_lines("random_lines", self.get_random_lines, pen=QPen(green, 1))
         self.ruler_widget.update()
 
     def get_random_rects(self):
         if self.rects:
             return self.rects
         rects = []
-        for _ in range(70):
+        for _ in range(20000):
             x = self.random_datetime()
             y = random.uniform(0, 50000)
             width = self.random_timedelta()
@@ -48,7 +48,7 @@ class NavigationWindow(QMainWindow):
         if self.lines:
             return self.lines
         lines = []
-        for _ in range(4000):
+        for _ in range(8000):
             x1 = self.random_datetime()
             y1 = random.uniform(0, 50000)
             x2 = self.random_datetime()

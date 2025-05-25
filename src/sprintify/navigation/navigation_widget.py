@@ -25,7 +25,7 @@ class NavigationWidget(QWidget):
         self.left_renderer = self.create_renderer(left_ruler, orientation='y')
         self.bottom_renderer = None
         self.right_renderer = None
-        self.draw_commands = []
+        self.draw_commands = {}
 
     def create_renderer(self, ruler, orientation='x'):
         if isinstance(ruler, NumberRuler):
@@ -34,10 +34,14 @@ class NavigationWidget(QWidget):
             return TimelineRulerRenderer(ruler, self.color_map, orientation)
         return None
 
-    def add_draw_command(self, command):
-        self.draw_commands.append(command)
+    def add_draw_command(self, name, command):
+        self.draw_commands[name] = command
 
-    def draw_rects(self, get_rects_func, brush=None, pen=None):
+    def remove_draw_command(self, name):
+        if name in self.draw_commands:
+            del self.draw_commands[name]
+
+    def draw_rects(self, name, get_rects_func, brush=None, pen=None):
         def command(painter):
             rects = get_rects_func()
             if pen:
@@ -55,18 +59,18 @@ class NavigationWidget(QWidget):
                 y2 = self.left_ruler.transform(y+height, self.height())
                 return QRectF(x1, y1, x2-x1, y2-y1)
             painter.drawRects([QRectF(transform_rect(x, y, width, height)) for x, y, width, height in rects])
-        self.add_draw_command(command)
+        self.add_draw_command(name, command)
 
-    def draw_lines(self, get_lines_func, pen=None):
+    def draw_lines(self, name, get_lines_func, pen=None):
         def command(painter):
             lines = get_lines_func()
             if pen:
                 painter.setPen(pen)
             qlines = [QLineF(self.top_ruler.transform(x1, self.width()), self.left_ruler.transform(y1, self.height()), self.top_ruler.transform(x2, self.width()), self.left_ruler.transform(y2, self.height())) for x1, y1, x2, y2 in lines]
             painter.drawLines(qlines)
-        self.add_draw_command(command)
+        self.add_draw_command(name, command)
 
-    def draw_ellipses(self, get_ellipses_func, brush=None, pen=None):
+    def draw_ellipses(self, name, get_ellipses_func, brush=None, pen=None):
         def command(painter):
             ellipses = get_ellipses_func()
             if pen:
@@ -78,10 +82,10 @@ class NavigationWidget(QWidget):
             else:
                 painter.setBrush(Qt.BrushStyle.NoBrush)
             for x, y, width, height in ellipses:
-                painter.drawEllipse(QRectF(self.top_ruler.transform(x), self.left_ruler.transform(y), width, height))
-        self.add_draw_command(command)
+                painter.drawEllipse(QRectF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height()), width, height))
+        self.add_draw_command(name, command)
 
-    def draw_texts(self, get_texts_func, pen=None, font=None):
+    def draw_texts(self, name, get_texts_func, pen=None, font=None):
         def command(painter):
             texts = get_texts_func()
             if pen:
@@ -89,16 +93,16 @@ class NavigationWidget(QWidget):
             if font:
                 painter.setFont(font)
             for text, x, y in texts:
-                painter.drawText(QPointF(self.top_ruler.transform(x), self.left_ruler.transform(y)), text)
-        self.add_draw_command(command)
+                painter.drawText(QPointF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height())), text)
+        self.add_draw_command(name, command)
 
-    def draw_points(self, get_points_func, pen=None):
+    def draw_points(self, name, get_points_func, pen=None):
         def command(painter):
             points = get_points_func()
             if pen:
                 painter.setPen(pen)
-            painter.drawPoints([QPointF(self.top_ruler.transform(x), self.left_ruler.transform(y)) for x, y in points])
-        self.add_draw_command(command)
+            painter.drawPoints([QPointF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height())) for x, y in points])
+        self.add_draw_command(name, command)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -108,7 +112,7 @@ class NavigationWidget(QWidget):
         rect = QRectF(0, 0, self.width(), self.height())
         painter.drawRect(rect)
 
-        for command in self.draw_commands:
+        for command in self.draw_commands.values():
             command(painter)
 
         painter.setPen(Qt.PenStyle.NoPen)
