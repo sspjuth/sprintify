@@ -7,7 +7,7 @@ error() {
   exit 1
 }
 
-rm -rf navigation/dist/*
+rm -rf dist/*
 
 # Ensure required tools are installed
 command -v git >/dev/null 2>&1 || error "git is not installed."
