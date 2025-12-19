@@ -1,13 +1,24 @@
-from datetime import datetime
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QGridLayout
+from PySide6.QtGui import QPainter
 
-from PySide6.QtCore import Qt, QRectF, QPoint, QPointF, QLineF
-from PySide6.QtWidgets import QWidget
-from PySide6.QtGui import QPainter, QBrush
+from sprintify.navigation.rulers import NumberRuler, TimelineRuler, ItemRuler
+from sprintify.navigation.widgets import NumberRulerWidget, TimelineRulerWidget, DrawingWidget, ItemRulerWidget
 
-from sprintify.navigation.renderers import TimelineRulerRenderer, NumberRulerRenderer
-from sprintify.navigation.rulers import NumberRuler, TimelineRuler
 
 class NavigationWidget(QWidget):
+    """
+    Main composite navigation widget.
+
+    Uses a QGridLayout to arrange:
+    - Top ruler widget (horizontal timeline or number ruler)
+    - Left ruler widget (vertical number ruler)
+    - Main canvas area (for drawing data)
+
+    The ruler widgets handle their own rendering and zoom/pan interactions
+    by delegating to the underlying ruler models (NumberRuler, TimelineRuler).
+    """
+
     def __init__(self, top_ruler, left_ruler, color_map, right_ruler=None, bottom_ruler=None, parent=None):
         super().__init__(parent)
         self.color_map = color_map
@@ -15,155 +26,82 @@ class NavigationWidget(QWidget):
         self.left_ruler = left_ruler
         self.right_ruler = right_ruler
         self.bottom_ruler = bottom_ruler
-        self.last_full_zoom = datetime.now()
-        self.panning = False
-        self.last_mouse_pos = QPoint()
-        self.last_full_zoom = datetime.now()
+
+        # Create ruler widgets (share the BaseRuler instances)
+        if isinstance(top_ruler, TimelineRuler):
+            self.top_ruler_widget = TimelineRulerWidget(top_ruler, color_map, self)
+        elif isinstance(top_ruler, ItemRuler):
+            self.top_ruler_widget = ItemRulerWidget(top_ruler, color_map, orientation='x', parent=self)
+        else:
+            self.top_ruler_widget = NumberRulerWidget(top_ruler, color_map, 'x', self)
+
+        if isinstance(left_ruler, ItemRuler):
+            self.left_ruler_widget = ItemRulerWidget(left_ruler, color_map, orientation='y', parent=self)
+        else:
+            self.left_ruler_widget = NumberRulerWidget(left_ruler, color_map, 'y', self)
+
+        # Create drawing widget (shares the same BaseRuler instances)
+        self.canvas = DrawingWidget(top_ruler, left_ruler, color_map, self)
+
+        # Layout
+        layout = QGridLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Corner size matches the ruler dimensions
+        corner_height = 30 if isinstance(top_ruler, TimelineRuler) else (80 if isinstance(top_ruler, ItemRuler) else 20)
+        corner_width = 80 if isinstance(left_ruler, ItemRuler) else 20
+        corner = QWidget()
+        corner.setFixedSize(corner_width, corner_height)
+        corner.paintEvent = lambda e: QPainter(corner).fillRect(corner.rect(), color_map.get_object_color("surface-base"))
+
+        layout.addWidget(corner, 0, 0)
+        layout.addWidget(self.top_ruler_widget, 0, 1)
+        layout.addWidget(self.left_ruler_widget, 1, 0)
+        layout.addWidget(self.canvas, 1, 1)
+
         self.setMouseTracking(True)
 
-        self.top_renderer = self.create_renderer(top_ruler)
-        self.left_renderer = self.create_renderer(left_ruler, orientation='y')
-        self.bottom_renderer = None
-        self.right_renderer = None
-        self.draw_commands = {}
+        self._linked_widgets: set["NavigationWidget"] = set()
 
-    def create_renderer(self, ruler, orientation='x'):
-        if isinstance(ruler, NumberRuler):
-            return NumberRulerRenderer(ruler, self.color_map, orientation)
-        elif isinstance(ruler, TimelineRuler):
-            return TimelineRulerRenderer(ruler, self.color_map, orientation)
-        return None
+    def link_widget(self, other: "NavigationWidget") -> None:
+        """Link two NavigationWidgets so they repaint together (useful when sharing ruler instances)."""
+        if other is self:
+            return
+        self._linked_widgets.add(other)
+        other._linked_widgets.add(self)
 
+    def _notify_linked(self) -> None:
+        """Repaint this widget and any linked widgets (and their rulers)."""
+        self.update()
+        for w in list(self._linked_widgets):
+            w.update()
+            # ensure their canvas repaints even if only rulers changed
+            if hasattr(w, "canvas"):
+                w.canvas.update()
+
+    # Delegate drawing API to canvas
     def add_draw_command(self, name, command):
-        self.draw_commands[name] = command
+        self.canvas.add_draw_command(name, command)
 
     def remove_draw_command(self, name):
-        if name in self.draw_commands:
-            del self.draw_commands[name]
+        self.canvas.remove_draw_command(name)
+
+    def clear_draw_commands(self):
+        """Clear all registered draw commands on the canvas."""
+        self.canvas.draw_commands.clear()
 
     def draw_rects(self, name, get_rects_func, brush=None, pen=None):
-        def command(painter):
-            rects = get_rects_func()
-            if pen:
-                painter.setPen(pen)
-            else:
-                painter.setPen(Qt.PenStyle.NoPen)
-            if brush:
-                painter.setBrush(brush)
-            else:
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-            def transform_rect(x, y, width, height):
-                x1 = self.top_ruler.transform(x, self.width())
-                y1 = self.left_ruler.transform(y, self.height())
-                x2 = self.top_ruler.transform(x+width, self.width())
-                y2 = self.left_ruler.transform(y+height, self.height())
-                return QRectF(x1, y1, x2-x1, y2-y1)
-            painter.drawRects([QRectF(transform_rect(x, y, width, height)) for x, y, width, height in rects])
-        self.add_draw_command(name, command)
+        self.canvas.draw_rects(name, get_rects_func, brush, pen)
 
     def draw_lines(self, name, get_lines_func, pen=None):
-        def command(painter):
-            lines = get_lines_func()
-            if pen:
-                painter.setPen(pen)
-            qlines = [QLineF(self.top_ruler.transform(x1, self.width()), self.left_ruler.transform(y1, self.height()), self.top_ruler.transform(x2, self.width()), self.left_ruler.transform(y2, self.height())) for x1, y1, x2, y2 in lines]
-            painter.drawLines(qlines)
-        self.add_draw_command(name, command)
+        self.canvas.draw_lines(name, get_lines_func, pen)
 
     def draw_ellipses(self, name, get_ellipses_func, brush=None, pen=None):
-        def command(painter):
-            ellipses = get_ellipses_func()
-            if pen:
-                painter.setPen(pen)
-            else:
-                painter.setPen(Qt.PenStyle.NoPen)
-            if brush:
-                painter.setBrush(brush)
-            else:
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-            for x, y, width, height in ellipses:
-                painter.drawEllipse(QRectF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height()), width, height))
-        self.add_draw_command(name, command)
+        self.canvas.draw_ellipses(name, get_ellipses_func, brush, pen)
 
     def draw_texts(self, name, get_texts_func, pen=None, font=None):
-        def command(painter):
-            texts = get_texts_func()
-            if pen:
-                painter.setPen(pen)
-            if font:
-                painter.setFont(font)
-            for text, x, y in texts:
-                painter.drawText(QPointF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height())), text)
-        self.add_draw_command(name, command)
+        self.canvas.draw_texts(name, get_texts_func, pen, font)
 
     def draw_points(self, name, get_points_func, pen=None):
-        def command(painter):
-            points = get_points_func()
-            if pen:
-                painter.setPen(pen)
-            painter.drawPoints([QPointF(self.top_ruler.transform(x, self.width()), self.left_ruler.transform(y, self.height())) for x, y in points])
-        self.add_draw_command(name, command)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        painter.setBrush(QBrush(self.color_map.get_object_color("surface-lower")))
-        rect = QRectF(0, 0, self.width(), self.height())
-        painter.drawRect(rect)
-
-        for command in self.draw_commands.values():
-            command(painter)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(self.color_map.get_object_color("surface-base")))
-        rect = QRectF(0, 0, self.width(), 20)
-        painter.drawRect(rect)
-        rect = QRectF(0, 0, 20, self.height())
-        painter.drawRect(rect)
-
-        self.top_renderer.draw_ruler(painter, self.width())
-        self.left_renderer.draw_ruler(painter, self.height())
-
-    def wheelEvent(self, event):
-        if (datetime.now() - self.last_full_zoom).total_seconds() < 0.5:
-            return
-        zoom_in = event.angleDelta().y() > 0
-        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # X zooming
-            mouse_pos = event.position().x()
-            self.top_ruler.zoom(zoom_in, mouse_pos, self.width())
-            self.update()
-            if self.top_ruler.window_length == self.top_ruler.visible_length:
-                self.last_full_zoom = datetime.now()
-        elif event.modifiers() & Qt.KeyboardModifier.AltModifier:
-            # Y zooming
-            mouse_pos = event.position().y()
-            self.left_ruler.zoom(zoom_in, mouse_pos, self.height())
-            self.update()
-            if self.left_ruler.window_length == self.left_ruler.visible_length:
-                self.last_full_zoom = datetime.now()
-            pass
-        else:
-            # Scroll
-            self.top_ruler.pan(event.angleDelta().x(), self.width())
-            self.left_ruler.pan(-event.angleDelta().y(), self.height())
-            self.update()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.panning = True
-            self.last_mouse_pos = event.pos()
-
-    def mouseMoveEvent(self, event):
-        if self.panning:
-            delta_x = (event.pos() - self.last_mouse_pos).x()
-            delta_y = (event.pos() - self.last_mouse_pos).y()
-            self.top_ruler.pan(delta_x, self.width())
-            self.left_ruler.pan(-delta_y, self.height())
-            self.last_mouse_pos = event.pos()
-            self.update()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.panning = False
+        self.canvas.draw_points(name, get_points_func, pen)
