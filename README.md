@@ -81,6 +81,11 @@ Check the `examples/` folder for complete working apps:
 
 **scheduling_app.py** - Employee shifts (200 people, ItemRuler usage).
 
+### Sales Heatmap App
+<img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/sales_heatmap_app.png" width="600" alt="Navigation App">
+
+**sales_heatmap_app.py** - Sales correlation between products (ItemRuler x ItemRuler).
+
 ### Navigation App
 <img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/navigation_app.png" width="600" alt="Navigation App">
 
