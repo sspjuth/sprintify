@@ -3,7 +3,7 @@
 A navigation widget for PySide6 that handles large datasets efficiently. Built for interactive time-series visualization, Gantt charts, stock data, heatmaps - anything that needs smooth pan/zoom.
 <!-- HERO IMAGE: Shows the most impressive view (e.g. the stock app or gantt) -->
 <p align="center">
-  <img src="https://github.com/sspjuth/sprintify/blob/main/assets/stock_navigation.png" width="100%" alt="Sprintify Navigation Demo">
+  <img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/stock_navigation.png" width="100%" alt="Sprintify Navigation Demo">
 </p>
 ## What it does
 
@@ -68,17 +68,17 @@ Check the `examples/` folder for complete working apps:
 
 ### Stock App
 <!-- specific screenshot for this example -->
-<img src="https://github.com/sspjuth/sprintify/blob/main/assets/stock_app.png" width="600" alt="Stock App">
+<img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/stock_app.png" width="600" alt="Stock App">
 
 **stock_app.py** - Real stock data via yfinance.
 
 ### Scheduling App
-<img src="https://github.com/sspjuth/sprintify/blob/main/assets/scheduling_app.png" width="600" alt="Scheduling App">
+<img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/scheduling_app.png" width="600" alt="Scheduling App">
 
 **scheduling_app.py** - Employee shifts (200 people, ItemRuler usage).
 
 ### Navigation App
-<img src="https://github.com/sspjuth/sprintify/blob/main/assets/navigation_app.png" width="600" alt="Navigation App">
+<img src="https://raw.githubusercontent.com/sspjuth/sprintify/main/assets/navigation_app.png" width="600" alt="Navigation App">
 
 **navigation_app.py** - Random lines and Squares
 
