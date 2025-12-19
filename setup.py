@@ -19,7 +19,7 @@ setup(
     description='A navigation widget  based on PySide6',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url='https://github.com/sspjuth/navigation',
+    url='https://github.com/sspjuth/sprintify',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
