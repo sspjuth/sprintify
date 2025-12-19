@@ -1,6 +1,10 @@
 import os
 from setuptools import setup, find_packages
 
+here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(here, "README.md"), "r", encoding="utf-8") as f:
+    long_description = f.read()
+
 setup(
     name='sprintify-navigation',
     version=os.environ.get("RELEASE_VERSION", "1.0.6"),
@@ -13,6 +17,8 @@ setup(
     author='Sami Spjuth',
     author_email='sami@spjuth.org',
     description='A navigation widget  based on PySide6',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url='https://github.com/sspjuth/navigation',
     classifiers=[
         'Development Status :: 4 - Beta',
