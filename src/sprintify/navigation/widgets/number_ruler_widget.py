@@ -90,6 +90,8 @@ class NumberRulerWidget(QWidget):
             self.ruler.pan(delta)
 
         self.update()
-        if self.parent() and hasattr(self.parent(), 'canvas'):
+        if self.parent() and hasattr(self.parent(), "_notify_linked"):
+            self.parent()._notify_linked()
+        elif self.parent() and hasattr(self.parent(), "canvas"):
             self.parent().canvas.update()
         event.accept()
