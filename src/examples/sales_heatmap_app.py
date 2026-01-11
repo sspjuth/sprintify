@@ -2,29 +2,26 @@
 sales_heatmap_app.py
 
 This example demonstrates a correlation heatmap visualization using ItemRuler on both axes.
-It shows relationships between articles/products as a color-coded matrix where:
-- Each cell represents the correlation between two articles
-- Color intensity indicates correlation strength (blue=low, green=medium, yellow/red=high)
-- Correlation values are displayed when zoomed in enough
-- Hovering shows article names and correlation value
-
-Key features demonstrated:
-- **ItemRuler on both axes**: For categorical data (articles/products)
-- **Color mapping**: Using a gradient to represent numerical values
-- **Conditional rendering**: Show text only when cells are large enough
-- **Mouse tracking**: Display hover information
+Optimized for large datasets (1000+ products) with:
+- Fast vectorized correlation calculation
+- Direct drawing for large grids (no individual items)
+- Interactive items only for smaller grids (with tooltips only, no selection/drag)
 """
 from datetime import datetime, timedelta
 import random
 import math
+from dataclasses import dataclass
+import numpy as np
 
-from PySide6.QtGui import QBrush, QPen, QColor, QFont
-from PySide6.QtWidgets import QMainWindow, QToolTip
-from PySide6.QtCore import Qt, QRectF, QPoint
+from PySide6.QtGui import QBrush, QPen, QColor, QFont, QPainter
+from PySide6.QtWidgets import QMainWindow, QProgressDialog, QToolTip
+from PySide6.QtCore import Qt, QRectF, QEvent
 
 from sprintify.navigation.colors.modes import ColorMap
 from sprintify.navigation.rulers import ItemRuler
 from sprintify.navigation.navigation_widget import NavigationWidget
+from sprintify.navigation.interaction.interaction_item import InteractiveItem
+from sprintify.navigation.interaction.selection import InteractionHandler
 
 
 class Article:
@@ -34,76 +31,79 @@ class Article:
         self.id = article_id
         self.name = name
         self.category = category
-        self.sales_pattern = []  # Daily sales over time
+        self.sales_pattern = None  # Will be numpy array
 
-    def generate_sales_pattern(self, days=365):
-        """Generate a sales pattern that can be correlated with other articles."""
+    def generate_sales_pattern_fast(self, days=365):
+        """Generate sales pattern using vectorized operations."""
         # Base pattern with seasonality
         base_level = random.uniform(50, 200)
         seasonality_amplitude = random.uniform(20, 80)
         trend = random.uniform(-0.5, 0.5)
         noise_level = random.uniform(5, 20)
 
-        for day in range(days):
-            # Seasonal pattern (annual cycle)
-            seasonal = seasonality_amplitude * math.sin(2 * math.pi * day / 365)
-            # Trend
-            trend_component = trend * day
-            # Random noise
-            noise = random.uniform(-noise_level, noise_level)
-            # Weekly pattern (lower on weekends)
-            weekly = -10 if day % 7 in [5, 6] else 0
+        # Vectorized calculation
+        day_array = np.arange(days)
+        seasonal = seasonality_amplitude * np.sin(2 * np.pi * day_array / 365)
+        trend_component = trend * day_array
+        noise = np.random.uniform(-noise_level, noise_level, days)
+        weekly = np.where(day_array % 7 >= 5, -10, 0)
 
-            sales = base_level + seasonal + trend_component + weekly + noise
-            sales = max(0, sales)
-            self.sales_pattern.append(sales)
+        sales = base_level + seasonal + trend_component + weekly + noise
+        self.sales_pattern = np.maximum(0, sales)
 
 
-def calculate_correlation(article1: Article, article2: Article):
-    """Calculate Pearson correlation between two articles' sales patterns."""
-    if article1.id == article2.id:
-        return 1.0  # Perfect correlation with itself
+def calculate_correlation_matrix_fast(articles):
+    """Calculate correlation matrix using NumPy for speed."""
+    n = len(articles)
 
-    x = article1.sales_pattern
-    y = article2.sales_pattern
-    n = len(x)
+    # Stack all sales patterns into a matrix
+    sales_matrix = np.array([a.sales_pattern for a in articles])
 
-    if n == 0:
-        return 0.0
+    # Calculate correlation matrix using NumPy
+    # Transpose so each column is an article
+    sales_T = sales_matrix.T
 
-    # Calculate means
-    mean_x = sum(x) / n
-    mean_y = sum(y) / n
+    # Standardize each column (article)
+    means = np.mean(sales_T, axis=0)
+    stds = np.std(sales_T, axis=0)
 
-    # Calculate correlation
-    numerator = sum((x[i] - mean_x) * (y[i] - mean_y) for i in range(n))
-    denominator_x = math.sqrt(sum((x[i] - mean_x) ** 2 for i in range(n)))
-    denominator_y = math.sqrt(sum((y[i] - mean_y) ** 2 for i in range(n)))
+    # Avoid division by zero
+    stds[stds == 0] = 1
 
-    if denominator_x == 0 or denominator_y == 0:
-        return 0.0
+    standardized = (sales_T - means) / stds
 
-    correlation = numerator / (denominator_x * denominator_y)
-    return max(-1.0, min(1.0, correlation))  # Clamp to [-1, 1]
+    # Calculate correlation matrix
+    correlation_matrix = np.dot(standardized.T, standardized) / (sales_T.shape[0] - 1)
+
+    # Ensure diagonal is exactly 1 and clamp to [-1, 1]
+    np.fill_diagonal(correlation_matrix, 1.0)
+    correlation_matrix = np.clip(correlation_matrix, -1, 1)
+
+    return correlation_matrix
 
 
-def create_correlated_articles(base_article: Article, correlation_strength: float, article_id: int, name: str, category: str = None):
-    """Create a new article with a specific correlation to the base article."""
-    if category is None:
-        category = base_article.category
+def create_correlated_articles_fast(base_pattern, correlation_strength, article_id, name, category="Mixed"):
+    """Create article with correlated pattern using vectorized operations."""
     new_article = Article(article_id, name, category)
 
-    # Generate correlated sales pattern
-    noise_factor = math.sqrt(1 - correlation_strength ** 2)
+    noise_factor = math.sqrt(max(0, 1 - correlation_strength ** 2))
 
-    for i in range(len(base_article.sales_pattern)):
-        base_value = base_article.sales_pattern[i]
-        # Mix base pattern with independent noise
-        correlated_value = (correlation_strength * base_value +
-                          noise_factor * random.uniform(0, 200))
-        new_article.sales_pattern.append(max(0, correlated_value))
+    # Generate correlated pattern using vectorized operations
+    independent_pattern = np.random.uniform(0, 200, len(base_pattern))
+    correlated_pattern = correlation_strength * base_pattern + noise_factor * independent_pattern
+    new_article.sales_pattern = np.maximum(0, correlated_pattern)
 
     return new_article
+
+
+@dataclass
+class HeatmapCell:
+    """Data for a single heatmap cell."""
+    row_idx: int
+    col_idx: int
+    row_article: Article
+    col_article: Article
+    correlation: float
 
 
 class CorrelationHeatmapWindow(QMainWindow):
@@ -111,33 +111,38 @@ class CorrelationHeatmapWindow(QMainWindow):
         super().__init__()
         self.articles = articles or []
         self.setWindowTitle("Article Correlation Heatmap")
-        self.setMinimumSize(1200, 1200)
+        self.setMinimumSize(1000, 800)
 
         self.color_map = ColorMap(darkmode=True)
 
-        # Pre-calculate correlation matrix
-        n = len(self.articles)
-        self.correlation_matrix = [[0.0] * n for _ in range(n)]
-        for i in range(n):
-            for j in range(n):
-                self.correlation_matrix[i][j] = calculate_correlation(
-                    self.articles[i], self.articles[j]
-                )
+        # Show progress dialog for large datasets
+        progress = None
+        if len(self.articles) > 100:
+            progress = QProgressDialog("Calculating correlations...", None, 0, 100, self)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.show()
+            progress.setValue(10)
+
+        # Pre-calculate correlation matrix using fast vectorized method
+        self.correlation_matrix = calculate_correlation_matrix_fast(self.articles)
+
+        if progress:
+            progress.setValue(90)
 
         # Create ItemRulers for both axes
         self.h_ruler = ItemRuler(
             item_count=len(self.articles),
             length=1200,
-            default_pixels_per_item=40,
-            min_pixels_per_item=10,
+            default_pixels_per_item=40 if len(self.articles) < 100 else 10,
+            min_pixels_per_item=3,
             max_pixels_per_item=200
         )
 
         self.v_ruler = ItemRuler(
             item_count=len(self.articles),
             length=1200,
-            default_pixels_per_item=40,
-            min_pixels_per_item=10,
+            default_pixels_per_item=40 if len(self.articles) < 100 else 10,
+            min_pixels_per_item=3,
             max_pixels_per_item=200
         )
 
@@ -146,201 +151,231 @@ class CorrelationHeatmapWindow(QMainWindow):
         self.widget.left_ruler_widget.get_label = lambda i: self.articles[i].name if i < len(self.articles) else ""
         self.widget.top_ruler_widget.get_label = lambda i: self.articles[i].name if i < len(self.articles) else ""
 
-        # Enable mouse tracking for hover
-        self.widget.canvas.setMouseTracking(True)
-        self.widget.canvas.mouseMoveEvent = self._handle_mouse_move
-
         self.setCentralWidget(self.widget)
 
-        # Draw heatmap
-        self.draw_heatmap()
+        # For large grids, use direct drawing instead of interactive items
+        self.use_direct_drawing = len(self.articles) > 50
 
-    def _handle_mouse_move(self, event):
-        """Handle mouse move for tooltip display."""
-        # Get mouse position in ruler coordinates
-        mouse_x = event.position().x()
-        mouse_y = event.position().y()
-
-        # Use get_value_at instead of inverse_transform
-        h_value = self.h_ruler.get_value_at(mouse_x)
-        v_value = self.v_ruler.get_value_at(mouse_y)
-
-        # Check if hovering over a valid cell
-        if 0 <= h_value < len(self.articles) and 0 <= v_value < len(self.articles):
-            h_idx = int(h_value)
-            v_idx = int(v_value)
-
-            article_x = self.articles[h_idx]
-            article_y = self.articles[v_idx]
-            correlation = self.correlation_matrix[v_idx][h_idx]
-
-            tooltip_text = (f"{article_y.name} vs {article_x.name}\n"
-                          f"Correlation: {correlation:.3f}")
-
-            QToolTip.showText(event.globalPosition().toPoint(), tooltip_text, self.widget.canvas)
+        if self.use_direct_drawing:
+            # Register direct drawing command for the heatmap
+            self.widget.canvas.add_draw_command("heatmap", self._draw_heatmap_direct)
+            # Still enable mouse tracking for tooltips
+            self.widget.canvas.viewport().setMouseTracking(True)
+            self.widget.canvas.viewport().installEventFilter(self)
         else:
-            QToolTip.hideText()
+            # Use interactive items for smaller grids - simplified setup
+            self.interaction = InteractionHandler(
+                self.widget.canvas,
+                xr=self.h_ruler,
+                yr=self.v_ruler,
+            )
+
+            # Simply disable interaction - the core API handles this better now
+            self.interaction.can_drop = lambda items: False  # No drag/drop
+            self.interaction.draw_custom_item = self._draw_heatmap_cell
+            self.interaction.show_tooltips = True
+
+            self._create_heatmap_items()
+
+        if progress:
+            progress.setValue(100)
+            progress.close()
 
     def _get_color_for_correlation(self, correlation: float) -> QColor:
         """Map correlation value [-1, 1] to a color gradient."""
         # Map correlation to [0, 1] range
         normalized = (correlation + 1.0) / 2.0
 
-        # Create gradient: blue (0) -> cyan (0.3) -> green (0.5) -> yellow (0.7) -> red (1)
-        if normalized < 0.25:
-            # Blue to Cyan
-            t = normalized / 0.25
+        # Create gradient: blue (negative) -> white (zero) -> red (positive)
+        if normalized < 0.5:
+            # Blue to White
+            t = normalized * 2
             return QColor(
-                int(0 * (1-t) + 0 * t),
-                int(0 * (1-t) + 150 * t),
-                int(200 * (1-t) + 200 * t)
-            )
-        elif normalized < 0.5:
-            # Cyan to Green
-            t = (normalized - 0.25) / 0.25
-            return QColor(
-                int(0 * (1-t) + 0 * t),
-                int(150 * (1-t) + 200 * t),
-                int(200 * (1-t) + 100 * t)
-            )
-        elif normalized < 0.75:
-            # Green to Yellow
-            t = (normalized - 0.5) / 0.25
-            return QColor(
-                int(0 * (1-t) + 255 * t),
-                int(200 * (1-t) + 255 * t),
-                int(100 * (1-t) + 0 * t)
+                int(0 + 255 * t),
+                int(0 + 255 * t),
+                255
             )
         else:
-            # Yellow to Red
-            t = (normalized - 0.75) / 0.25
+            # White to Red
+            t = (normalized - 0.5) * 2
             return QColor(
                 255,
-                int(255 * (1-t) + 50 * t),
-                0
+                int(255 * (1 - t)),
+                int(255 * (1 - t))
             )
 
-    def draw_heatmap(self):
-        """Draw the correlation heatmap with colors and optional text."""
-        def draw_cells(painter):
-            # Get visible range
-            first_h = int(self.h_ruler.visible_start)
-            last_h = min(len(self.articles), int(self.h_ruler.visible_stop) + 1)
-            first_v = int(self.v_ruler.visible_start)
-            last_v = min(len(self.articles), int(self.v_ruler.visible_stop) + 1)
+    def _draw_heatmap_direct(self, painter: QPainter):
+        """Direct drawing method for large heatmaps."""
+        # Get visible range
+        col_start = max(0, int(self.h_ruler.visible_start))
+        col_end = min(len(self.articles), int(self.h_ruler.visible_stop) + 1)
+        row_start = max(0, int(self.v_ruler.visible_start))
+        row_end = min(len(self.articles), int(self.v_ruler.visible_stop) + 1)
 
-            # Check if cells are large enough for text
-            sample_h_start = self.h_ruler.transform(float(first_h))
-            sample_h_end = self.h_ruler.transform(float(first_h + 1))
-            cell_width = sample_h_end - sample_h_start
-            show_text = cell_width > 30  # Show text if cell is wider than 30 pixels
+        # Draw only visible cells
+        for row_idx in range(row_start, row_end):
+            for col_idx in range(col_start, col_end):
+                correlation = self.correlation_matrix[row_idx, col_idx]
 
-            # Set up font for text
-            if show_text:
-                font = QFont()
-                font.setPointSize(8 if cell_width > 60 else 7)
-                painter.setFont(font)
+                # Calculate pixel rectangle
+                x1 = self.h_ruler.transform(col_idx)
+                x2 = self.h_ruler.transform(col_idx + 1)
+                y1 = self.v_ruler.transform(row_idx)
+                y2 = self.v_ruler.transform(row_idx + 1)
+                rect = QRectF(x1, y1, x2 - x1, y2 - y1)
 
-            # Draw each visible cell
-            for v_idx in range(first_v, last_v):
-                for h_idx in range(first_h, last_h):
-                    correlation = self.correlation_matrix[v_idx][h_idx]
+                # Draw cell
+                color = self._get_color_for_correlation(correlation)
+                painter.setBrush(QBrush(color))
+                painter.setPen(QPen(self.color_map.get_object_color("border"), 0.5))
+                painter.drawRect(rect)
 
-                    # Get cell boundaries
-                    x1 = self.h_ruler.transform(float(h_idx))
-                    x2 = self.h_ruler.transform(float(h_idx + 1))
-                    y1 = self.v_ruler.transform(float(v_idx))
-                    y2 = self.v_ruler.transform(float(v_idx + 1))
+                # Draw text only if cell is large enough
+                if rect.width() > 30 and rect.height() > 20:
+                    font = QFont()
+                    font.setPointSize(8 if rect.width() > 60 else 7)
+                    painter.setFont(font)
 
-                    # Draw cell background
-                    color = self._get_color_for_correlation(correlation)
-                    painter.setBrush(QBrush(color))
-                    painter.setPen(QPen(self.color_map.get_object_color("border"), 0.5))
-                    painter.drawRect(QRectF(x1, y1, x2 - x1, y2 - y1))
+                    text_color = Qt.GlobalColor.black if correlation > -0.2 else Qt.GlobalColor.white
+                    painter.setPen(QPen(text_color))
 
-                    # Draw text if cells are large enough
-                    if show_text:
-                        # Choose text color based on background brightness
-                        text_color = Qt.GlobalColor.black if correlation > 0.3 else Qt.GlobalColor.white
-                        painter.setPen(QPen(text_color))
+                    text = f"{correlation:.2f}"
+                    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
-                        # Draw correlation value
-                        text = f"{correlation:.2f}"
-                        painter.drawText(
-                            QRectF(x1, y1, x2 - x1, y2 - y1),
-                            Qt.AlignmentFlag.AlignCenter,
-                            text
-                        )
+    def eventFilter(self, source, event):
+        """Handle tooltips for direct drawing mode."""
+        if self.use_direct_drawing and source == self.widget.canvas.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                pos = event.position()
+                col = int(self.h_ruler.get_value_at(pos.x()))
+                row = int(self.v_ruler.get_value_at(pos.y()))
 
-        self.widget.add_draw_command("heatmap", draw_cells)
-        self.widget.update()
+                if 0 <= row < len(self.articles) and 0 <= col < len(self.articles):
+                    correlation = self.correlation_matrix[row, col]
+                    tooltip = (
+                        f"{self.articles[row].name} vs {self.articles[col].name}\n"
+                        f"Correlation: {correlation:.3f}"
+                    )
+                    QToolTip.showText(event.globalPosition().toPoint(), tooltip, self.widget.canvas.viewport())
+                else:
+                    QToolTip.hideText()
+                # Don't consume the event, let other handlers process it too
+                return False
+
+        return super().eventFilter(source, event)
+
+    def _create_heatmap_items(self):
+        """Create InteractiveItems for small grids only (read-only with tooltips)."""
+        from sprintify.navigation.interaction.interaction_item import ItemCapabilities
+
+        for row_idx in range(len(self.articles)):
+            for col_idx in range(len(self.articles)):
+                cell_data = HeatmapCell(
+                    row_idx=row_idx,
+                    col_idx=col_idx,
+                    row_article=self.articles[row_idx],
+                    col_article=self.articles[col_idx],
+                    correlation=self.correlation_matrix[row_idx, col_idx]
+                )
+
+                # Simplified item creation using new capabilities pattern
+                item = InteractiveItem(
+                    data=cell_data,
+                    x=float(col_idx),
+                    y=float(row_idx),
+                    width=1.0,
+                    height=1.0,
+                    capabilities=ItemCapabilities(
+                        can_move=False,
+                        can_resize=False,
+                        resize_handles=set()  # No resize handles
+                    ),
+                    # Tooltip using the standard pattern
+                    tooltip=(
+                        f"{cell_data.row_article.name} vs {cell_data.col_article.name}\n"
+                        f"Correlation: {cell_data.correlation:.3f}"
+                    )
+                )
+
+                # Set visuals directly
+                item.visuals.fill_color = self._get_color_for_correlation(cell_data.correlation)
+                item.visuals.stroke_color = self.color_map.get_object_color("border")
+                item.visuals.stroke_width = 0.5
+
+                self.interaction.add_item(item)
+
+    def _draw_heatmap_cell(self, painter: QPainter, item: InteractiveItem, rect: QRectF):
+        """Custom drawing for heatmap cells (small grids only)."""
+        cell_data = item.data
+
+        color = self._get_color_for_correlation(cell_data.correlation)
+        painter.setBrush(QBrush(color))
+        painter.setPen(QPen(self.color_map.get_object_color("border"), 0.5))
+        painter.drawRect(rect)
+
+        if rect.width() > 30:
+            font = QFont()
+            font.setPointSize(8 if rect.width() > 60 else 7)
+            painter.setFont(font)
+
+            text_color = Qt.GlobalColor.black if cell_data.correlation > -0.2 else Qt.GlobalColor.white
+            painter.setPen(QPen(text_color))
+
+            text = f"{cell_data.correlation:.2f}"
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
 
 
 if __name__ == "__main__":
     import sys
     from PySide6.QtWidgets import QApplication
 
-    # Create articles with different correlation patterns
+    # Fast generation of 1000 products
     articles = []
 
-    # Create base articles for different categories
-    base_electronics = Article(0, "Laptop Pro", "Electronics")
-    base_electronics.generate_sales_pattern()
-    articles.append(base_electronics)
+    print("Generating 1000 products with sales patterns...")
 
-    # Create correlated electronics
-    articles.append(create_correlated_articles(base_electronics, 0.85, 1, "Mouse Wireless", "Electronics"))
-    articles.append(create_correlated_articles(base_electronics, 0.75, 2, "Keyboard Mech", "Electronics"))
-    articles.append(create_correlated_articles(base_electronics, 0.60, 3, "Monitor 27in", "Electronics"))
+    # Create base articles for different clusters
+    num_clusters = 20
+    cluster_bases = []
 
-    # Create base for clothing
-    base_clothing = Article(4, "T-Shirt Basic", "Clothing")
-    base_clothing.generate_sales_pattern()
-    articles.append(base_clothing)
+    for i in range(num_clusters):
+        base = Article(i, f"Base-{i}", f"Category-{i % 5}")
+        base.generate_sales_pattern_fast()
+        articles.append(base)
+        cluster_bases.append(base)
 
-    articles.append(create_correlated_articles(base_clothing, 0.70, 5, "Jeans Slim", "Clothing"))
-    articles.append(create_correlated_articles(base_clothing, 0.65, 6, "Jacket Denim", "Clothing"))
-
-    # Create base for food
-    base_food = Article(7, "Coffee Beans", "Food")
-    base_food.generate_sales_pattern()
-    articles.append(base_food)
-
-    articles.append(create_correlated_articles(base_food, 0.80, 8, "Coffee Filters", "Food"))
-    articles.append(create_correlated_articles(base_food, 0.55, 9, "Sugar Pack", "Food"))
-
-    # Create many more articles (up to 1000 total)
-    article_id = 10
-
-    # Create some more base articles with clusters
-    for cluster_idx in range(20):
-        base_article = Article(article_id, f"Base-Product-{cluster_idx}", "Mixed")
-        base_article.generate_sales_pattern()
-        articles.append(base_article)
-        article_id += 1
-
-        # Create 5-10 correlated articles for each base
-        num_correlated = random.randint(5, 10)
-        for j in range(num_correlated):
-            correlation = random.uniform(0.4, 0.9)
-            correlated = create_correlated_articles(
-                base_article,
+    # Generate correlated products for each cluster
+    article_id = num_clusters
+    for base in cluster_bases:
+        # Generate 10-80 correlated products per cluster
+        num_products = random.randint(10, 80)
+        for _ in range(num_products):
+            correlation = random.uniform(0.3, 0.95)
+            article = create_correlated_articles_fast(
+                base.sales_pattern,
                 correlation,
                 article_id,
-                f"Product-{article_id}",
-                "Mixed"
+                f"P-{article_id}",
+                base.category
             )
-            articles.append(correlated)
+            articles.append(article)
             article_id += 1
 
-    # Fill remaining slots with independent articles
-    while len(articles) < 300:
-        article = Article(article_id, f"Product-{article_id}", "Mixed")
-        article.generate_sales_pattern()
+            if article_id >= 1000:
+                break
+        if article_id >= 1000:
+            break
+
+    # Fill remaining with independent products
+    while len(articles) < 1000:
+        article = Article(article_id, f"P-{article_id}", f"Category-{article_id % 5}")
+        article.generate_sales_pattern_fast()
         articles.append(article)
         article_id += 1
 
+    print(f"Generated {len(articles)} products")
+
     app = QApplication(sys.argv)
-    window = CorrelationHeatmapWindow(articles)
+    window = CorrelationHeatmapWindow(articles[:1000])  # Limit to 1000
     window.show()
     sys.exit(app.exec())

@@ -12,6 +12,8 @@ from sprintify.navigation.colors.modes import ColorMap
 class NumberRulerWidget(QWidget):
     def __init__(self, ruler: NumberRuler, color_map: ColorMap, orientation: Literal['x', 'y'] = 'x', parent: Optional[QWidget] = None) -> None:
         """Create numeric ruler widget with auto-generated tick labels and SI unit formatting."""
+        if orientation not in ("x", "y"):
+            raise ValueError(f"NumberRulerWidget: orientation must be 'x' or 'y', got {orientation!r}")
         super().__init__(parent)
         self.ruler: NumberRuler = ruler
         self.color_map: ColorMap = color_map
@@ -53,7 +55,7 @@ class NumberRulerWidget(QWidget):
     def _get_tickers(self) -> np.ndarray:
         y_range = self.ruler.visible_stop - self.ruler.visible_start
         if y_range == 0:
-            return [self.ruler.visible_start]
+            return np.array([self.ruler.visible_start], dtype=float)
 
         raw_step = y_range / 3
         magnitude = 10 ** np.floor(np.log10(raw_step))

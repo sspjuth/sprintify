@@ -1,11 +1,19 @@
-from typing import Union
 from datetime import datetime
+from typing import Union
 
 
 class BaseRuler:
     """Base class for all rulers providing coordinate transformation and navigation."""
 
-    def __init__(self, window_start: Union[float, datetime], window_stop: Union[float, datetime], length: float = 1.0, visible_start: Union[float, datetime, None] = None, visible_stop: Union[float, datetime, None] = None, reverse: bool = False) -> None:
+    def __init__(
+        self,
+        window_start: Union[float, datetime],
+        window_stop: Union[float, datetime],
+        length: float = 1.0,
+        visible_start: Union[float, datetime, None] = None,
+        visible_stop: Union[float, datetime, None] = None,
+        reverse: bool = False,
+    ) -> None:
         """Create ruler with total data range [window_start, window_stop] and initial visible range."""
         self.window_start = window_start
         self.window_stop = window_stop
@@ -32,9 +40,19 @@ class BaseRuler:
             return self.visible_stop - normalized * self.visible_length
         return self.visible_start + normalized * self.visible_length
 
-    def get_delta_width(self, delta: float) -> float:
-        """Convert pixel delta to data value delta."""
-        return self.visible_length * (delta / self.length)
+    def get_delta_width(self, delta_pixels: float):
+        """Convert pixel delta to data value delta. Returns same type as ruler's data."""
+        # Use absolute value to ensure proper scaling regardless of reverse flag
+        if self.length <= 0:
+            return self.visible_length * 0  # Return zero in the appropriate type
+
+        ratio = delta_pixels / self.length
+
+        # For reversed rulers, negate the ratio
+        if self.reverse:
+            ratio = -ratio
+
+        return self.visible_length * ratio
 
     def zoom(self, zoom_in: bool, mouse_pos: float) -> None:
         """Zoom in/out while keeping the value at mouse_pos fixed in place."""

@@ -103,7 +103,7 @@ class ItemRulerWidget(QWidget):
             # Zoom
             self.ruler.zoom(zoom_in, mouse_pos)
         else:
-        # Pan
+            # Pan
             if self.orientation == 'x':
                 self.ruler.pan(event.angleDelta().x())
             else:

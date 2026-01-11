@@ -27,6 +27,10 @@ class TimelineRulerWidget(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRect(self.rect())
 
+        if self.ruler.visible_stop <= self.ruler.visible_start:
+            # Developer mistake / uninitialized ruler; draw background only.
+            return
+
         visible_seconds = (self.ruler.visible_stop - self.ruler.visible_start).total_seconds()
         pixels_per_day = self.width() / (visible_seconds / 86400) if visible_seconds > 0 else float("inf")
 

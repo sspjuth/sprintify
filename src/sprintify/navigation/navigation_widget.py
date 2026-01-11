@@ -1,25 +1,47 @@
+from __future__ import annotations
+
+from typing import Callable, Optional, TypeAlias, Any, Union
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QGridLayout
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QPixmap
 
 from sprintify.navigation.rulers import NumberRuler, TimelineRuler, ItemRuler
 from sprintify.navigation.widgets import NumberRulerWidget, TimelineRulerWidget, DrawingWidget, ItemRulerWidget
 
+DrawCommand: TypeAlias = Callable[[QPainter], None]
+
 
 class NavigationWidget(QWidget):
     """
-    Main composite navigation widget.
+    Composite navigation widget with rulers + drawing canvas.
 
-    Uses a QGridLayout to arrange:
-    - Top ruler widget (horizontal timeline or number ruler)
-    - Left ruler widget (vertical number ruler)
-    - Main canvas area (for drawing data)
+    Layout:
+      - top_ruler_widget (timeline/number/item)
+      - left_ruler_widget (number/item)
+      - canvas (DrawingWidget)
 
-    The ruler widgets handle their own rendering and zoom/pan interactions
-    by delegating to the underlying ruler models (NumberRuler, TimelineRuler).
+    Notes:
+      - All widgets share the same ruler model instances (pan/zoom is applied to the model).
+      - Use link_widget() when you have multiple NavigationWidget instances sharing the same rulers and
+        you want them to repaint together during interaction.
     """
 
-    def __init__(self, top_ruler, left_ruler, color_map, right_ruler=None, bottom_ruler=None, parent=None):
+    def __init__(
+        self,
+        top_ruler: Any,
+        left_ruler: Any,
+        color_map: Any,
+        right_ruler: Any = None,
+        bottom_ruler: Any = None,
+        background_image: Optional[Union[str, Path, QPixmap]] = None,
+        parent: Optional[QWidget] = None,
+    ):
+        if top_ruler is None or left_ruler is None:
+            raise ValueError("NavigationWidget: top_ruler and left_ruler must be provided")
+        if color_map is None:
+            raise ValueError("NavigationWidget: color_map must be provided")
         super().__init__(parent)
         self.color_map = color_map
         self.top_ruler = top_ruler
@@ -40,15 +62,35 @@ class NavigationWidget(QWidget):
         else:
             self.left_ruler_widget = NumberRulerWidget(left_ruler, color_map, 'y', self)
 
+        # Create bottom ruler widget (share the BaseRuler instances)
+        self.bottom_ruler_widget = None
+        if bottom_ruler:
+            if isinstance(bottom_ruler, TimelineRuler):
+                self.bottom_ruler_widget = TimelineRulerWidget(bottom_ruler, color_map, self)
+            elif isinstance(bottom_ruler, ItemRuler):
+                self.bottom_ruler_widget = ItemRulerWidget(bottom_ruler, color_map, orientation='x', parent=self)
+            else:
+                self.bottom_ruler_widget = NumberRulerWidget(bottom_ruler, color_map, 'x', self)
+
         # Create drawing widget (shares the same BaseRuler instances)
-        self.canvas = DrawingWidget(top_ruler, left_ruler, color_map, self)
+        self.canvas = DrawingWidget(top_ruler, left_ruler, color_map, background_image, self)
 
         # Layout
         layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Corner size matches the ruler dimensions
+        # Explicitly set stretch factors:
+        # Row 1 (Canvas) gets all extra vertical space.
+        # Rows 0 (Top Ruler) and 2 (Bottom Ruler) stay their minimum/fixed size.
+        layout.setRowStretch(0, 0)
+        layout.setRowStretch(1, 1)
+        layout.setRowStretch(2, 0)
+
+        # Column 1 (Canvas) gets all extra horizontal space.
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 1)
+
         corner_height = 30 if isinstance(top_ruler, TimelineRuler) else (80 if isinstance(top_ruler, ItemRuler) else 20)
         corner_width = 80 if isinstance(left_ruler, ItemRuler) else 20
         corner = QWidget()
@@ -60,48 +102,67 @@ class NavigationWidget(QWidget):
         layout.addWidget(self.left_ruler_widget, 1, 0)
         layout.addWidget(self.canvas, 1, 1)
 
+        # Add bottom ruler if present
+        if self.bottom_ruler_widget:
+            layout.addWidget(self.bottom_ruler_widget, 2, 1)
+
+            # Bottom-Left Corner
+            corner_bl = QWidget()
+            h_bottom = 30 if isinstance(bottom_ruler, TimelineRuler) else (80 if isinstance(bottom_ruler, ItemRuler) else 20)
+            corner_bl.setFixedSize(corner_width, h_bottom)
+            corner_bl.paintEvent = lambda e: QPainter(corner_bl).fillRect(corner_bl.rect(), color_map.get_object_color("surface-base"))
+            layout.addWidget(corner_bl, 2, 0)
+
         self.setMouseTracking(True)
 
+        # Linked widgets repaint together (useful for stacked views sharing timeline)
         self._linked_widgets: set["NavigationWidget"] = set()
 
     def link_widget(self, other: "NavigationWidget") -> None:
-        """Link two NavigationWidgets so they repaint together (useful when sharing ruler instances)."""
+        """Link two NavigationWidget instances so they repaint together on pan/zoom."""
+        if other is None:
+            raise ValueError("link_widget: other must be a NavigationWidget")
         if other is self:
             return
         self._linked_widgets.add(other)
         other._linked_widgets.add(self)
 
+    def update(self) -> None:
+        """Override update to ensure canvas viewport is repainted (needed for ScrollArea)."""
+        super().update()
+        if hasattr(self, 'canvas') and self.canvas:
+            self.canvas.viewport().update()
+
     def _notify_linked(self) -> None:
-        """Repaint this widget and any linked widgets (and their rulers)."""
+        """Repaint this widget and any linked widgets."""
         self.update()
-        for w in list(self._linked_widgets):
+        # Explicitly update ruler widgets so they reflect scroll/zoom changes immediately
+        self.top_ruler_widget.update()
+        self.left_ruler_widget.update()
+        if self.bottom_ruler_widget:
+            self.bottom_ruler_widget.update()
+
+        # Ensure our own canvas scrollbars are synced (in case the trigger came from a linked widget)
+        if hasattr(self.canvas, "_update_scrollbars"):
+            self.canvas._update_scrollbars()
+
+        for w in tuple(self._linked_widgets):
             w.update()
-            # ensure their canvas repaints even if only rulers changed
-            if hasattr(w, "canvas"):
-                w.canvas.update()
 
-    # Delegate drawing API to canvas
-    def add_draw_command(self, name, command):
-        self.canvas.add_draw_command(name, command)
+            # Sync linked canvas scrollbars to match the shared ruler state
+            if hasattr(w.canvas, "_update_scrollbars"):
+                w.canvas._update_scrollbars()
 
-    def remove_draw_command(self, name):
-        self.canvas.remove_draw_command(name)
+            w.canvas.update()
+            w.top_ruler_widget.update()
+            w.left_ruler_widget.update()
+            if w.bottom_ruler_widget:
+                w.bottom_ruler_widget.update()
 
-    def clear_draw_commands(self):
-        """Clear all registered draw commands on the canvas."""
-        self.canvas.draw_commands.clear()
+    # ---- Drawing API (delegated to canvas) ---------------------------------
 
-    def draw_rects(self, name, get_rects_func, brush=None, pen=None):
-        self.canvas.draw_rects(name, get_rects_func, brush, pen)
-
-    def draw_lines(self, name, get_lines_func, pen=None):
-        self.canvas.draw_lines(name, get_lines_func, pen)
-
-    def draw_ellipses(self, name, get_ellipses_func, brush=None, pen=None):
-        self.canvas.draw_ellipses(name, get_ellipses_func, brush, pen)
-
-    def draw_texts(self, name, get_texts_func, pen=None, font=None):
-        self.canvas.draw_texts(name, get_texts_func, pen, font)
-
-    def draw_points(self, name, get_points_func, pen=None):
-        self.canvas.draw_points(name, get_points_func, pen)
+    def __getattr__(self, name: str):
+        """Delegate drawing commands to canvas (e.g. draw_rects, add_draw_command)."""
+        if hasattr(self.canvas, name) and name.startswith(("draw_", "add_draw", "remove_draw", "clear_draw")):
+            return getattr(self.canvas, name)
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

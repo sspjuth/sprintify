@@ -12,8 +12,27 @@ class ItemRuler(BaseRuler):
     Supports smooth zoom and pan with configurable min/max pixels per item.
     """
 
-    def __init__(self, item_count: int, length: float = 1.0, visible_start: float | None = None, visible_stop: float | None = None, reverse: bool = False, default_pixels_per_item: float = 30, min_pixels_per_item: float = 10, max_pixels_per_item: float = 100) -> None:
+    def __init__(
+        self,
+        item_count: int,
+        length: float = 1.0,
+        visible_start: float | None = None,
+        visible_stop: float | None = None,
+        reverse: bool = False,
+        default_pixels_per_item: float = 30,
+        min_pixels_per_item: float = 10,
+        max_pixels_per_item: float = 100
+    ) -> None:
         """Create ruler for discrete items. Each item occupies 1 unit in data space [0, item_count)."""
+        if not isinstance(item_count, int) or item_count <= 0:
+            raise ValueError(f"ItemRuler: item_count must be a positive int, got {item_count!r}")
+        if length <= 0:
+            raise ValueError(f"ItemRuler: length must be > 0, got {length!r}")
+        if min_pixels_per_item <= 0 or max_pixels_per_item <= 0:
+            raise ValueError("ItemRuler: min/max pixels per item must be > 0")
+        if min_pixels_per_item > max_pixels_per_item:
+            raise ValueError("ItemRuler: min_pixels_per_item must be <= max_pixels_per_item")
+
         self.item_count = item_count
         self.default_pixels_per_item = default_pixels_per_item
         self.min_pixels_per_item = min_pixels_per_item
@@ -78,7 +97,9 @@ class ItemRuler(BaseRuler):
         return max(0, min(item_index, self.item_count - 1))
 
     def get_item_bounds(self, item_index: int) -> Tuple[float, float]:
-        """Get pixel bounds (start, stop) for an item."""
+        """Get pixel bounds (start, stop) for an item. Raises if item_index is invalid."""
+        if not (0 <= item_index < self.item_count):
+            raise IndexError(f"ItemRuler.get_item_bounds: item_index {item_index} out of range [0, {self.item_count})")
         y_start = self.transform(float(item_index))
         y_stop = self.transform(float(item_index + 1))
         return (y_start, y_stop)
